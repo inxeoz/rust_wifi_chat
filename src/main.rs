@@ -1,5 +1,5 @@
-mod server;
-mod client;
+
+mod peer;
 
 use clap::{Parser, Subcommand};
 use std::process::Command;
@@ -22,7 +22,7 @@ enum Commands {
     },
 
     Host {
-        ip_category: String,
+        ip: String,
         port: u16,
     }
 }
@@ -32,10 +32,13 @@ fn main() {
 
     match &cli.command {
         Commands::Connect { ip, port } => {
-            client::connect_server(ip, port);
+
+            let address = format!("{}:{}", ip, port);
+            peer::connect_to_peer(&address);
         },
-        Commands::Host { port , ip_category} => {
-            server::host_server(ip_category, port);
+        Commands::Host { port , ip} => {
+            let address = format!("{}:{}", ip, port);
+           peer::start_listener(&address);
         }
     }
 }
