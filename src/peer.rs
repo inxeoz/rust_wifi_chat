@@ -1,13 +1,14 @@
 use std::net::{TcpListener, TcpStream};
 use std::io::{self, Read, Write};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::sync::Arc;
 
-/// Handles incoming messages from the peer
-fn handle_receive(mut stream: TcpStream) {
+/// Handles receiving messages from the peer
+fn handle_receive(stream: Arc<Mutex<TcpStream>>) {
     let mut buffer = [0; 1024];
 
     loop {
+        let mut stream = stream.lock().unwrap(); // Lock the stream for reading
         match stream.read(&mut buffer) {
             Ok(0) => {
                 println!("\nPeer disconnected.");
@@ -28,7 +29,7 @@ fn handle_receive(mut stream: TcpStream) {
 }
 
 /// Handles sending messages to the peer
-fn handle_send(mut stream: TcpStream) {
+fn handle_send(stream: Arc<Mutex<TcpStream>>) {
     loop {
         let mut input = String::new();
         print!("> ");
@@ -44,6 +45,7 @@ fn handle_send(mut stream: TcpStream) {
             break;
         }
 
+        let mut stream = stream.lock().unwrap(); // Lock the stream for writing
         if let Err(e) = stream.write_all(input.as_bytes()) {
             eprintln!("Send error: {}", e);
             break;
@@ -51,21 +53,23 @@ fn handle_send(mut stream: TcpStream) {
     }
 }
 
-/// Starts a listening server for incoming peer connections
+/// Starts a listener for incoming peer connections
 pub fn start_listener(addr: &str) {
     let listener = TcpListener::bind(addr).expect("Failed to bind port");
-
     println!("Listening on {} for incoming peers...", addr);
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 println!("New peer connected!");
-                let stream_clone = stream.try_clone().expect("Failed to clone stream");
+                let stream = Arc::new(Mutex::new(stream));
 
                 // Spawn separate threads for reading and writing
-                thread::spawn(move || handle_receive(stream));
-                thread::spawn(move || handle_send(stream_clone));
+                let receive_stream = Arc::clone(&stream);
+                let send_stream = Arc::clone(&stream);
+
+                thread::spawn(move || handle_receive(receive_stream));
+                thread::spawn(move || handle_send(send_stream));
             }
             Err(e) => eprintln!("Connection failed: {}", e),
         }
@@ -77,9 +81,12 @@ pub fn connect_to_peer(addr: &str) {
     let stream = TcpStream::connect(addr).expect("Failed to connect to peer");
     println!("Connected to peer: {}", addr);
 
-    let stream_clone = stream.try_clone().expect("Failed to clone stream");
+    let stream = Arc::new(Mutex::new(stream));
 
     // Spawn separate threads for reading and writing
-    thread::spawn(move || handle_receive(stream));
-    thread::spawn(move || handle_send(stream_clone));
+    let receive_stream = Arc::clone(&stream);
+    let send_stream = Arc::clone(&stream);
+
+    thread::spawn(move || handle_receive(receive_stream));
+    thread::spawn(move || handle_send(send_stream));
 }
